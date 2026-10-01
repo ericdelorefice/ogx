@@ -195,7 +195,7 @@ class BedrockInferenceAdapter(OpenAIMixin):
                 )
             except Exception:
                 logger.warning("Failed to list Bedrock foundation models", exc_info=True)
-                return []
+                raise
             return [
                 m["modelId"] for m in response.get("modelSummaries", []) if m.get("modelLifecycleStatus") == "ACTIVE"
             ]
@@ -207,7 +207,7 @@ class BedrockInferenceAdapter(OpenAIMixin):
             return [m.id async for m in client.models.list()]
         except Exception:
             logger.warning("Failed to list models from Bedrock mantle endpoint", exc_info=True)
-            return []
+            raise
 
     async def check_model_availability(self, model: str) -> bool:
         return True
