@@ -77,6 +77,11 @@ OPENAI_VECTOR_STORES_FILES_PREFIX = f"openai_vector_stores_files:milvus:{VERSION
 OPENAI_VECTOR_STORES_FILES_CONTENTS_PREFIX = f"openai_vector_stores_files_contents:milvus:{VERSION}::"
 
 
+def _like_literal(text: str) -> str:
+    """Escape text for use inside a double-quoted Milvus string literal."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
 class MilvusIndex(EmbeddingIndex):
     """Embedding index backed by a Milvus collection."""
 
@@ -304,12 +309,14 @@ class MilvusIndex(EmbeddingIndex):
         """
         Fallback to simple text search when BM25 search is not available.
         """
-        # Simple text search using content field, still restricted by the caller's filters
-        text_filter = 'content like "%{content}%"'
+        # Simple text search using content field, still restricted by the caller's filters.
+        # Milvus only accepts a string literal after LIKE (a template placeholder is a parse
+        # error there, and one inside quotes is never substituted), so the query is written
+        # into the literal with backslashes and double quotes escaped.
+        text_filter = f'content like "%{_like_literal(query_string)}%"'
         search_res = await self.client.query(
             collection_name=self.collection_name,
             filter=f"({filter_expr}) and {text_filter}" if filter_expr else text_filter,
-            filter_params={"content": query_string},
             output_fields=["*"],
             limit=k,
         )

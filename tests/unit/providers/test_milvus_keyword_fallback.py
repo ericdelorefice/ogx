@@ -4,11 +4,11 @@
 # This source code is licensed under the terms described in the LICENSE file in
 # the root directory of this source tree.
 
-"""The keyword-search fallback must not widen the search.
+"""The keyword-search fallback must actually search, and must not widen the search.
 
 When BM25 search fails, MilvusIndex.query_keyword falls back to a plain text
-query. That fallback has to keep the caller's filters, and a filter that
-cannot be translated has to raise instead of being dropped.
+query. That fallback has to match the query text, keep the caller's filters,
+and a filter that cannot be translated has to raise instead of being dropped.
 """
 
 import sys
@@ -77,12 +77,24 @@ async def test_filter_that_cannot_be_translated_raises():
     assert client.query_kwargs is None
 
 
-async def test_fallback_without_filters_is_unchanged():
+async def test_fallback_without_filters_matches_the_text():
+    # Milvus only accepts a string literal after LIKE: a placeholder inside the quotes is
+    # never substituted, so the query has to be written into the literal itself.
     client = _BM25UnavailableClient()
     index = _index(client)
 
     await index.query_keyword("fox", k=5, score_threshold=0.0)
 
     assert client.query_kwargs is not None
-    assert client.query_kwargs["filter"] == 'content like "%{content}%"'
-    assert client.query_kwargs["filter_params"] == {"content": "fox"}
+    assert client.query_kwargs["filter"] == 'content like "%fox%"'
+    assert "filter_params" not in client.query_kwargs
+
+
+async def test_fallback_escapes_quotes_and_backslashes():
+    client = _BM25UnavailableClient()
+    index = _index(client)
+
+    await index.query_keyword('say "hi" \\ now', k=5, score_threshold=0.0)
+
+    assert client.query_kwargs is not None
+    assert client.query_kwargs["filter"] == 'content like "%say \\"hi\\" \\\\ now%"'
